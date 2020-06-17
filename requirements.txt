@@ -5,7 +5,7 @@ scipy~=1.4.1
 pandas~=1.0.4
 matplotlib~=3.2.1
 joblib~=0.15.1
-tensorflow~=1.14.0
+tensorflow~=1.15.2
 mpi4py~=3.0.3
 cloudpickle~=1.4.1
 qpsolvers
