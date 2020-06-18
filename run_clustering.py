@@ -30,10 +30,10 @@ agent_to_data = {
     # 'up2': ["logs/cont_gridworld/gpomdp2/up", []],
     # 'down2': ["logs/cont_gridworld/gpomdp2/down", []],
 
-    #'border2': ["logs/cont_gridworld/gpomdp3/border/dataset_20", []],
-    # 'center2': ["logs/cont_gridworld/gpomdp3/center/dataset_20/", []],
-    # 'up2': ["logs/cont_gridworld/gpomdp3/up/dataset_20", []],
-    # 'down2': ["logs/cont_gridworld/gpomdp3/down/dataset_20", []],
+    #'border2': ["logs/cont_gridworld/gpomdp/border/dataset_20", []],
+    # 'center2': ["logs/cont_gridworld/gpomdp/center/dataset_20/", []],
+    # 'up2': ["logs/cont_gridworld/gpomdp/up/dataset_20", []],
+    # 'down2': ["logs/cont_gridworld/gpomdp/down/dataset_20", []],
 }
 
 agents = ["uniform", "tweet", "no_tweet"]
@@ -42,11 +42,10 @@ for i in range(10):
         agent_to_data[agent + "_" + str(i)] = ["data/twitter/" + agent + "/1000_" + str(i), []]
 
 
-def em_clustering(mus, sigmas, ids, lamb=1, num_clusters=2, num_objectives=3, max_iterations=100, tolerance=1e-3,
+def em_clustering(mus, sigmas, ids, lamb=1, num_clusters=2, num_objectives=3, max_iterations=100, tolerance=1e-7,
                   verbose=False, optimization_iterations=10, cluster_iterations=1):
     num_agents = len(mus)
     loss_functions = []
-    tolerance = 1e-7
     for i, mu in enumerate(mus):
         loss_functions.append(make_loss_function(mu, sigmas[i], ids[i]))
 
@@ -56,10 +55,15 @@ def em_clustering(mus, sigmas, ids, lamb=1, num_clusters=2, num_objectives=3, ma
     min_loss = np.inf
     best_assignment = None
     for c_it in range(cluster_iterations):
+        # initial assignment
         p = np.random.uniform(size=(num_clusters, num_agents))
         p = p / np.sum(p, axis=0)
+        # Best Assignment
+        p2 = np.ones(num_clusters)
+        p2 /= np.sum(p2)
+        omega = np.zeros(shape=(num_clusters, num_objectives))
         it = 0
-        omega = np.random.random((num_clusters, num_objectives))
+        diff = np.inf
         prev_assignment = None
 
         while it < max_iterations:
@@ -70,31 +74,32 @@ def em_clustering(mus, sigmas, ids, lamb=1, num_clusters=2, num_objectives=3, ma
                 w, loss = weight_calculator(p[i])
                 omega[i] = w
 
-            print("Omegas at iteration %d: " % it)
-            print(omega)
+            #print("Omegas at iteration %d: " % it)
+            # print(omega)
 
             # find best assignment for given Omega
             # best assignment is hard
+            # p2 = np.zeros_like(p)
             loss_value = 0
             for j, mu in enumerate(mus):
                 p[:, j] = 0.
                 minimum = np.inf
-                # index = -1
+                index = -1
                 for i in range(num_clusters):
                     loss = loss_functions[j](omega[i])
                     if loss < minimum:
-                        # index = i
+                        index = i
                         minimum = loss
                     p[i, j] = -lamb * loss
                 p[:, j] -= np.max(p[:, j])
                 p[:, j] = np.exp(p[:, j])
                 p[:, j] /= np.sum(p[:, j])
                 loss_value += minimum
-            # p2 = np.mean(p, axis=1)
+            p2 = np.mean(p, axis=1)
             # print(p2)
-            print("Assignment at iteration %d: " % it)
-            print(p)
-            print("Loss Value ", loss_value)
+            # print("Assignment at iteration %d: " % it)
+            # print(p)
+            # print("Loss Value ", loss_value)
             if loss_value < min_loss:
                 min_loss = loss_value
                 best_assignment = np.copy(p)

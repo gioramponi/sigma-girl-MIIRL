@@ -14,3 +14,4 @@ sklearn
 psopy
 cvxopt
 prettytable
+sympy

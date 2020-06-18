@@ -3,15 +3,16 @@ import gym
 from gym import spaces
 from envs.feature.rbf import build_features_gw_state
 
-class GridWorld(gym.Env):
 
+class GridWorld(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 30
     }
 
-    def __init__(self, shape=[9., 9.],fail_prob=0.1, goal=None, start=None, gamma=0.99,  horizon=500,
-                 rew_weights=None, randomized_initial=False, direction='center', n_bases=[9, 9], CSI=None, ml=None, border_width=2):
+    def __init__(self, shape=[9., 9.], fail_prob=0.1, goal=None, start=None, gamma=0.99, horizon=500,
+                 rew_weights=None, randomized_initial=False, direction='center', n_bases=[9, 9], CSI=None, ml=None,
+                 border_width=2):
 
         assert shape[0] >= 3 and shape[1] >= 3, "The grid must be at least 3x3"
         assert horizon >= 1, "The horizon must be at least 1"
@@ -35,7 +36,7 @@ class GridWorld(gym.Env):
         if start is None:
             start = np.array([0, shape[0]], dtype=np.float64)
         size = np.array(shape)
-        size[1] = 2*size[1]
+        size[1] = 2 * size[1]
 
         self.CSI = CSI
         self.size = size
@@ -46,7 +47,7 @@ class GridWorld(gym.Env):
         self.randomized_initial = randomized_initial
 
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(n_bases[0], n_bases[1]))
-        #delta_x, delta_y
+        # delta_x, delta_y
         self.action_space = spaces.Box(low=np.array([-3., -3.]), high=np.array((3., 3.)))
 
         self.PrettyTable = None
@@ -59,14 +60,13 @@ class GridWorld(gym.Env):
 
         self.rew_weights = np.array(rew_weights)
         # if np.sum(rew_weights) != 0:
-            # self.rew_weights = self.rew_weights / np.sum(rew_weights)
+        # self.rew_weights = self.rew_weights / np.sum(rew_weights)
 
         # gym attributes
         self.viewer = None
         self.feat_func = build_features_gw_state(self.size, n_bases, 2)
         # initialize state
         self.reset(rbf=True)
-
 
     def get_rew_features(self, state=None, clipped=False):
         features = np.zeros(4)
@@ -89,10 +89,9 @@ class GridWorld(gym.Env):
         elif self.direction == 'down' and y > self.size[1] / 2:
             features[1] = -1
         else:
-            features[0] = -1.   # fast region
+            features[0] = -1.  # fast region
 
         return features
-
 
     def reached_goal(self, state=None):
         if state is None:
@@ -118,15 +117,12 @@ class GridWorld(gym.Env):
         elif x > 0 and y <= 0:
             new_action = 6  # DIAGONALE DESTRA GIU
         elif x <= 0 and y <= 0:
-            new_action= 7  # DIAGONALE SINISTRA GIU
+            new_action = 7  # DIAGONALE SINISTRA GIU
         return np.array([new_action])
-
 
     def get_CSI_reward(self, action, rbf=False, ohe=False):
         action = self.discretize_action(action)
         return self.CSI.predict([np.concatenate((self.state, action))])
-
-
 
     def step(self, a, rbf=False, ohe=False):
         if self.reached_goal():
@@ -158,7 +154,7 @@ class GridWorld(gym.Env):
         # Clip to make sure the agent is inside the grid
         state_before = self.state
         state_clip = self.state.clip([0., 0.], self.size - 1e-8)
-        #punish going out?
+        # punish going out?
         if self.state[0] != state_clip[0] or self.state[1] != state_clip[1]:
             clipped = True
         else:
@@ -173,12 +169,11 @@ class GridWorld(gym.Env):
 
         # print(self.reached_goal())
         self.t += 1
-        self.done = 1 if self.reached_goal() else 0 #or self.t >= self.horizon 
+        self.done = 1 if self.reached_goal() else 0  # or self.t >= self.horizon
         # print(features)
         return self.get_state(rbf=rbf, ohe=ohe), reward, self.done, {'features': features, 'position': state_before}
 
-
-    def get_state(self, rbf=False,ohe=False):
+    def get_state(self, rbf=False, ohe=False):
         if rbf or ohe:
             s = self.feat_func(self.state)
             return s
@@ -212,8 +207,10 @@ class GridWorld(gym.Env):
             self.viewer = rendering.Viewer(int(500 * ratio), 500)
             self.viewer.set_bounds(0, self.size[0], 0, self.size[1])
 
-        self.viewer.draw_line((self.border_width, self.border_width), (self.size[0] - self.border_width, self.border_width))
-        self.viewer.draw_line((self.border_width, self.border_width), (self.border_width, self.size[1] - self.border_width))
+        self.viewer.draw_line((self.border_width, self.border_width),
+                              (self.size[0] - self.border_width, self.border_width))
+        self.viewer.draw_line((self.border_width, self.border_width),
+                              (self.border_width, self.size[1] - self.border_width))
         self.viewer.draw_line((self.size[0] - self.border_width, self.border_width),
                               (self.size[0] - self.border_width, self.size[1] - self.border_width))
         self.viewer.draw_line((self.border_width, self.size[1] - self.border_width),
@@ -236,13 +233,12 @@ class GridWorld(gym.Env):
 
 
 class GridWorldAction(gym.Env):
-
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 30
     }
 
-    def __init__(self, shape=[9., 9.],fail_prob=0., goal=None, start=None, gamma=0.99,  horizon=500,
+    def __init__(self, shape=[9., 9.], fail_prob=0., goal=None, start=None, gamma=0.99, horizon=500,
                  rew_weights=None, randomized_initial=False, direction='center', n_bases=[5, 5],
                  CSI=None, ml=None, border_width=2):
 
@@ -268,7 +264,7 @@ class GridWorldAction(gym.Env):
         if start is None:
             start = np.array([0.5, shape[0]], dtype=np.float64)
         size = np.array(shape)
-        size[1] = 2*size[1]
+        size[1] = 2 * size[1]
 
         self.CSI = CSI
         self.size = size
@@ -279,7 +275,7 @@ class GridWorldAction(gym.Env):
         self.randomized_initial = randomized_initial
 
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(n_bases[0], n_bases[1]))
-        #delta_x, delta_y
+        # delta_x, delta_y
         self.action_low, self.action_high = np.array([-1., -1.]), np.array([1., 1.])
         self.action_space = spaces.Box(low=self.action_low, high=self.action_high)
 
@@ -287,10 +283,9 @@ class GridWorldAction(gym.Env):
         self.rendering = None
         self.gamma = gamma
 
-
         self.rew_weights = np.array(rew_weights)
         # if np.sum(rew_weights) != 0:
-            # self.rew_weights = self.rew_weights / np.sum(rew_weights)
+        # self.rew_weights = self.rew_weights / np.sum(rew_weights)
 
         # gym attributes
         self.viewer = None
@@ -298,16 +293,15 @@ class GridWorldAction(gym.Env):
         # initialize state
         self.reset(rbf=True)
 
-
     def get_rew_features(self, state=None, action=None, clipped=False):
         features = np.zeros(3)
         x, y = state
         if clipped:
             features[0] = features[1] = -1.
         elif self.border_width < x < self.size[0] - self.border_width and \
-                 self.border_width < y < self.size[1] - self.border_width:  # slow_region
+                self.border_width < y < self.size[1] - self.border_width:  # slow_region
             features[1] = -1.
-        #elif y < self.size[1] / 2 - self.border_width/2 or y > self.size[1] / 2 + self.border_width/2:  #fast region
+        # elif y < self.size[1] / 2 - self.border_width/2 or y > self.size[1] / 2 + self.border_width/2:  #fast region
         else:
             features[0] = -1.
 
@@ -322,7 +316,8 @@ class GridWorldAction(gym.Env):
 
         x, y = state
 
-        return x > self.size[0] - self.border_width and self.size[1] / 2 - self.border_width / 2 < y < self.size[1] / 2 + self.border_width / 2  #np.linalg.norm(state - self.goal) <= self.goal_radius
+        return x > self.size[0] - self.border_width and self.size[1] / 2 - self.border_width / 2 < y < self.size[
+            1] / 2 + self.border_width / 2  # np.linalg.norm(state - self.goal) <= self.goal_radius
 
     def discretize_action(self, action):
 
@@ -355,9 +350,8 @@ class GridWorldAction(gym.Env):
             self.t += 1
             return self.get_state(rbf=rbf, ohe=ohe), 0, 1, {'features': np.zeros(3)}
 
-
         action = np.array(a).clip(self.action_low, self.action_high)
-        #print(a, action, self.state)
+        # print(a, action, self.state)
         # print(a)
         self.state += self.speed * self.time_step * action
         # Add noise
@@ -390,7 +384,7 @@ class GridWorldAction(gym.Env):
         else:
             clipped = False
 
-        #print(clipped)
+        # print(clipped)
 
         self.state = state_clip
         features = self.get_rew_features(state=self.state, action=action, clipped=clipped)
@@ -405,8 +399,7 @@ class GridWorldAction(gym.Env):
         # print(features)
         return self.get_state(rbf=rbf, ohe=ohe), reward, self.done, {'features': features, 'position': state_before}
 
-
-    def get_state(self, rbf=False,ohe=False):
+    def get_state(self, rbf=False, ohe=False):
         if rbf or ohe:
             s = self.feat_func(self.state)
             return s
@@ -420,7 +413,7 @@ class GridWorldAction(gym.Env):
             if self.randomized_initial:
                 self.state = np.copy(self.goal)
                 while self.reached_goal():
-                    self.state = np.random.uniform(low=[0.5, 0.5], high=self.size-0.5)
+                    self.state = np.random.uniform(low=[0.5, 0.5], high=self.size - 0.5)
             else:
                 self.state = np.copy(self.start)
         else:
@@ -440,8 +433,10 @@ class GridWorldAction(gym.Env):
             self.viewer = rendering.Viewer(int(500 * ratio), 500)
             self.viewer.set_bounds(0, self.size[0], 0, self.size[1])
 
-        self.viewer.draw_line((self.border_width, self.border_width), (self.size[0] - self.border_width, self.border_width))
-        self.viewer.draw_line((self.border_width, self.border_width), (self.border_width, self.size[1] - self.border_width))
+        self.viewer.draw_line((self.border_width, self.border_width),
+                              (self.size[0] - self.border_width, self.border_width))
+        self.viewer.draw_line((self.border_width, self.border_width),
+                              (self.border_width, self.size[1] - self.border_width))
         self.viewer.draw_line((self.size[0] - self.border_width, self.border_width),
                               (self.size[0] - self.border_width, self.size[1] - self.border_width))
         self.viewer.draw_line((self.border_width, self.size[1] - self.border_width),

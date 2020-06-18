@@ -310,7 +310,7 @@ def learn(*,
             break
         logger.log("********** Iteration %i ************"%iters_so_far)
 
-        if iters_so_far % checkpoint_freq == 0 and checkpoint_dir_out is not None:
+        if iters_so_far % checkpoint_freq == 0 and iters_so_far > 0 and checkpoint_dir_out is not None:
             if not os.path.exists(checkpoint_dir_out):
                 os.makedirs(checkpoint_dir_out)
             pi.save(os.path.join(checkpoint_dir_out, 'checkpoint_%d' % iters_so_far))

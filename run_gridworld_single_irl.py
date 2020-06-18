@@ -1,17 +1,15 @@
 import numpy as np
-import os
 from time import sleep
 from envs.continuous_gridword import GridWorldAction
 from estimators.gradient_descent import Adam
 from algorithms.pgirl import solve_ra_PGIRL
+from algorithms.REIRL import reirl
 import argparse
 from joblib import Parallel, delayed
-from algorithms.REIRL import RelativeEntropyIRL
-from algorithms.CSI import csi
+from algorithms.CSI import csi, scirl
 import pickle
 from plot_gridworld import plot_grid
 
-# SCRIPT TO COLLECT TRAJECTORIES, TRAIN POLICIES AND RUN IRL ALGORITHMS IN THE GRIDWORLD ENVIRONMENT
 
 def create_batch_trajectories(env, batch_size, len_trajectories, param, variance, render=False):
     state_dim = np.prod(env.observation_space.shape)
@@ -37,6 +35,8 @@ def create_batch_trajectories(env, batch_size, len_trajectories, param, variance
             if render and batch == 0:  # render:
                 env._render()
                 sleep(0.1)
+
+            # print(state.shape)
             states[batch, t] = state
             actions[batch, t] = action
             rewards[batch, t] = reward
@@ -153,35 +153,14 @@ def discretize_actions(actions, action_max, action_min, n_bins_per_dim):
     return discretized_actions.astype(int)
 
 
-def _perform_irl(i, N_traj_irl, n_samples_irl, horizon, fail_prob, save_gradients, param, rew_weights, var_policy,
-                 save_path='.', load_gradients=False, load_path='.', agents_to_params=None, num_batches=100,
-                 batch_size=50, eval_episodes=100,):
-    if agents_to_params is None:
-        agents_to_params = {
-            'pgirl': (solve_ra_PGIRL, {'girl': True, 'other_options': [False, True, False]}, []),
-            'ra_pgirl_diag': (solve_ra_PGIRL, {"diag": True}, []),
-            # 'ra_pgirl_full': (solve_ra_PGIRL, {'seed': args.seed}, []),
-            'ra_pgirl_cov_estimation': (solve_ra_PGIRL, {"cov_estimation": True}, []),
-            're_irl': (RelativeEntropyIRL, {}, []),
-            'csi': (csi, {}, []),
-            'ra_pgirl_identity': (solve_ra_PGIRL, {"identity": True}, []),
-        }
-
-    agents = sorted(agents_to_params.keys())
-
-    num_agents = len(agents)
+def _perform_irl(i, N_traj_irl, n_samples_irl, horizon, fail_prob, save_gradients, param, var_policy, save_path):
     np.random.seed(i)
-    with open(save_path + '/agents.pkl', 'wb') as handle:
-        pickle.dump(agents, handle)
-
-    res = np.zeros((len(n_samples_irl), num_agents))
-    weights_diff = np.zeros((len(n_samples_irl),  num_agents))
-
+    res = np.zeros((len(n_samples_irl), 6))
+    weights_diff = np.zeros((len(n_samples_irl), 6))
     env = GridWorldAction(shape=shape, rew_weights=rew_weights,
-                           randomized_initial=True, horizon=horizon,
-                           n_bases=n_basis, fail_prob=fail_prob,
-                           border_width=1)
-    state_dim = np.prod(env.observation_space.shape)
+                          randomized_initial=True, horizon=horizon,
+                          n_bases=n_basis, fail_prob=fail_prob,
+                          border_width=1)
 
     print("\nIRL Experiment %s" % i)
     print("Collecting Trajectories and Computing Gradients...")
@@ -191,79 +170,75 @@ def _perform_irl(i, N_traj_irl, n_samples_irl, horizon, fail_prob, save_gradient
                               n_bases=n_basis, fail_prob=fail_prob,
                               border_width=1)
 
-    if load_gradients:
-        estimated_gradients = np.load(load_path + "/gridworld_grads_%s_%s_%s_%s.npy" % tuple(rew_weights + [i]))
-        if 'csi' in agents:
-            states, actions, _, reward_features, mask = create_batch_trajectories(env_irl, batch_size=N_traj_irl,
-                                                                                      len_trajectories=horizon,
-                                                                                      param=param,
-                                                                                      variance=var_policy)
+    states, actions, _, reward_features, mask = create_batch_trajectories(env_irl, batch_size=N_traj_irl,
+                                                                          len_trajectories=horizon, param=param,
+                                                                          variance=var_policy)
 
-            discretized_actions = discretize_actions(actions, env.action_high, env.action_low, n_bins_per_dim=3)
-    else:
-        states, actions, _, reward_features, mask = create_batch_trajectories(env_irl, batch_size=N_traj_irl,
-                                                                                  len_trajectories=horizon,
-                                                                                  param=param,
-                                                                                  variance=var_policy)
+    discretized_actions = discretize_actions(actions, env.action_high, env.action_low, n_bins_per_dim=3)
 
-        discretized_actions = discretize_actions(actions, env.action_high, env.action_low, n_bins_per_dim=3)
+    estimated_gradients = policy_gradient_est(param, batch_size=N_traj_irl, len_trajectories=horizon,
+                                              states=states, actions=actions, rewards=None,
+                                              reward_features=reward_features, mask=mask, gamma=gamma,
+                                              return_mean=False, return_ravel=True)
 
-        estimated_gradients = policy_gradient_est(param, batch_size=N_traj_irl, len_trajectories=horizon,
-                                                   states=states, actions=actions, rewards=None,
-                                                   reward_features=reward_features, mask=mask, gamma=gamma,
-                                                   return_mean=False, return_ravel=True)
+    feature_exp = compute_feature_expectations(horizon, reward_features, mask, gamma)
 
-        # feature_exp1 = compute_feature_expectations(horizon, reward_features1, mask1, gamma)
+    if save_gradients:
+        np.save(save_path + "/gridworld_grads_%s_%s_%s_%s.npy" % tuple(rew_weights + [i]), estimated_gradients)
 
-        if save_gradients:
-            np.save(save_path + "/gridworld_grads_%s_%s_%s_%s.npy" % tuple(rew_weights + [i]), estimated_gradients)
-
-    print("Collected trajectories")
-    print("States:", states.shape)
     # Collect trajectories for REIRL
-    _, _, _, reward_features_random, mask = create_batch_trajectories(env_irl, batch_size=100,
+    _, _, _, reward_features_random, mask = create_batch_trajectories(env_irl, batch_size=N_traj_irl,
                                                                       len_trajectories=horizon,
                                                                       param=np.zeros_like(param),
                                                                       variance=1)
 
+    feature_exp_random = compute_feature_expectations(horizon, reward_features_random, mask, gamma)
+
     for j, n in enumerate(n_samples_irl):
         print("\n\tIRL Episodes: %s" % n)
 
-        all_weights = []
-        for k, agent in enumerate(agents):
-            solver, params, result = agents_to_params[agent]
-            print("Solving ", agent)
-            if agent == 'csi':
-                sts = np.reshape(np.array(states), [N_traj_irl, horizon, state_dim])[:n]
-                ft = np.array(reward_features)
-                # discretize the actions before
-                features_array = np.reshape(ft, [N_traj_irl, horizon, ft.shape[-1]])[:n]
-                disc_actions = discretized_actions[:n]
-                mask = np.ones((n, horizon))
-                weights = csi(sts, disc_actions, mask, features_array, args.gamma, use_heuristic=True)
-            elif agent == 're_irl':
-                ft = np.array(reward_features)
-                features_array = np.reshape(ft, [N_traj_irl, args.horizon, ft.shape[-1]])
-                features_array = features_array[0: n, :, :]
-                # collect the random dataset
-                features_random = reward_features_random[:n]
+        # GIRL
+        print("\tSolving GIRL...")
+        weights_girl, loss_girl, _ = solve_ra_PGIRL(estimated_gradients[:n],
+                                                    other_options=[False, True, False],
+                                                    num_iters=1,
+                                                    cov_estimation=False)
 
-                solver = RelativeEntropyIRL(gamma=args.gamma, horizon=args.horizon, reward_features=features_array,
-                                            reward_random=features_random)
-                weights = solver.fit(verbose=False, gradient=False)
+        # RA-GIRL
+        print("\tSolving RA-GIRL...")
+        weights_ragirl, loss_ragirl, _ = solve_ra_PGIRL(estimated_gradients[:n],
+                                                        other_options=[False, False, False],
+                                                        num_iters=10,
+                                                        cov_estimation=True)
 
-            else:
-                g = estimated_gradients[:n]
-                # weights, loss, _ = solver(g, seed=i, **params)
-                try:
-                    weights, loss, _ = solver(g, seed=i, **params)
-                except:
-                    weights = np.ones_like(rew_weights) / len(rew_weights)
-                    loss = -1
+        # REIRL
+        print("\tSolving REIRL")
+        weights_reirl = reirl(feature_exp[:n], feature_exp_random[:n])
+
+        all_weights = [weights_girl, weights_ragirl, weights_reirl]
+        alg_names = ['GIRL', 'RA-GIRL', 'REIRL']
+
+        # CSI
+        print("\tSolving CSI")
+        weights_csi = csi(states, discretized_actions, mask, reward_features, env.gamma, use_heuristic=True)
+
+        # SCIRL
+        print("\tSolving SCIRL")
+        weights_scirl = scirl(states, discretized_actions, mask, reward_features, env.gamma)
+
+        all_weights += [weights_csi, weights_scirl]
+        alg_names += ['CSI', 'SCIRL']
+
+        with open(save_path + '/agents.pkl', 'wb') as handle:
+            pickle.dump(alg_names, handle)
+
+        print("\t\tTrue weights: %s" % rew_weights)
+        for k, (name, weights) in enumerate(zip(alg_names, all_weights)):
+            print("\t\tWeights %s : %s" % (name, weights))
             weights_diff[j, k] = np.linalg.norm(weights - rew_weights)
-            all_weights.append(weights)
+
         if train_after_irl:
-            for k, (name, weights) in enumerate(zip(agents, all_weights)):
+            for k, (name, weights) in enumerate(zip(alg_names, all_weights)):
                 print("\t\tTraining Agent with %s weights..." % name)
 
                 env_train_ = GridWorldAction(shape=shape, rew_weights=weights,
@@ -271,12 +246,11 @@ def _perform_irl(i, N_traj_irl, n_samples_irl, horizon, fail_prob, save_gradient
                                              n_bases=n_basis, fail_prob=fail_prob,
                                              border_width=1)
 
-                params_, _, _, _, _ = gpomdp(env_train_, num_batch=num_batches, batch_size=batch_size,
-                                             len_trajectories=horizon,
+                params_, _, _, _, _ = gpomdp(env_train_, num_batch=50, batch_size=100, len_trajectories=horizon,
                                              initial_param=np.zeros((np.prod(n_basis), 2)),
                                              gamma=gamma, var_policy=var_policy, verbose=False)
 
-                _, results_, _, _, _ = gpomdp(env, num_batch=1, batch_size=50, len_trajectories=horizon,
+                _, results_, _, _, _ = gpomdp(env, num_batch=1, batch_size=100, len_trajectories=horizon,
                                               initial_param=params_,
                                               gamma=gamma, var_policy=var_policy, verbose=False)
 
@@ -284,32 +258,27 @@ def _perform_irl(i, N_traj_irl, n_samples_irl, horizon, fail_prob, save_gradient
 
                 res[j, k] = results_[0]
 
-    return res, weights_diff
+    return res, weights_diff, alg_names
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--horizon', type=int, default=100, help='length of the episodes')
-    parser.add_argument('--gamma', type=float, default=0.999, help='discount factor')
+    parser.add_argument('--gamma', type=float, default=0.99, help='discount factor')
     parser.add_argument('--var_policy', type=float, default=0.1, help='variance of the policy')
     parser.add_argument('--shape', type=int, nargs='+', default=[], help='shape of gird')
     parser.add_argument('--n_basis', type=int, nargs='+', default=[], help='number of rbf basis for the state '
                                                                            'representation')
     parser.add_argument('--fail_prob', type=float, default=0.1, help='stochasticity of the environment')
     parser.add_argument('--load_policy', action='store_true', help='load a pretrained policy')
-    parser.add_argument('--load_path', type=str, default='data/gridworld', help='path to model to load')
-    parser.add_argument('--num_batches', type=float, default=30, help='Number of interations of forward rl training')
-    parser.add_argument('--batch_size', type=float, default=100, help='Number of episodes per batch')
+    parser.add_argument('--load_path', type=str, default='data/gridworld_single', help='path to model to load')
     parser.add_argument('--save_policy', action='store_true', help='save the trained policy')
-    parser.add_argument('--save_path', type=str, default='data/gridworld2', help='path to save the model')
+    parser.add_argument('--save_path', type=str, default='data/gridworld_single', help='path to save the model')
     parser.add_argument('--save_gradients', action='store_true', help='save the computed gradients')
-    parser.add_argument('--load_gradients', action='store_true', help='load the precomputed gradients')
     parser.add_argument('--train_after_irl', action='store_true', help='train with the computed rewards')
-    parser.add_argument('--n_experiments', type=int, default=2, help='number of experiments to perform')
-    parser.add_argument('--eval_episodes', type=int, default=50, help='number of evaluation episodes')
+    parser.add_argument('--n_experiments', type=int, default=10, help='number of experiments to perform')
     parser.add_argument('--n_jobs', type=int, default=1, help='number of parallel jobs')
     parser.add_argument('--render_policy', action='store_true', help='render the interaction with the environment')
-    parser.add_argument('--settings', type=str, default='', help='comma separated values of the settings to execute')
     parser.add_argument('--plot_results', action='store_true', help='plot the results')
 
     args = parser.parse_args()
@@ -331,8 +300,6 @@ if __name__ == '__main__':
     n_samples_irl = [2, 5, 10, 20, 50, 100, 200, 500, 1000]
     N_traj_irl = max(n_samples_irl)
 
-    if args.settings != '':
-        settings = [x for x in args.settings.split(',')]
     n_experiments = args.n_experiments
     horizon = args.horizon
     gamma = args.gamma
@@ -345,72 +312,48 @@ if __name__ == '__main__':
     train_after_irl = args.train_after_irl
 
     rew_weights = np.array([1., 100., 0.])
-
     rew_weights /= np.sum(rew_weights)
-
     rew_weights = rew_weights.tolist()
 
-    agents_to_params = {
-        'pgirl': (solve_ra_PGIRL, {'girl': True, 'other_options': [False, True, False]}, []),
-        'ra_pgirl_diag': (solve_ra_PGIRL, {"diag": True}, []),
-        # 'ra_pgirl_full': (solve_ra_PGIRL, {}, []),
-        'ra_pgirl_cov_estimation': (solve_ra_PGIRL, {"cov_estimation": True}, []),
-        #'ra_pgirl_convex': (solve_ra_PGIRL, {'other_options': [False, False, False, True]}, []),
-        're_irl': (RelativeEntropyIRL, {}, []),
-        'csi': (csi, {}, []),
-        #'ra_pgirl_identity': (solve_ra_PGIRL, {"identity": True}, []),
-    }
-    agents = sorted(agents_to_params.keys())
-    num_agents = len(agents)
-    res = np.zeros((n_experiments, len(n_samples_irl), num_agents))
-    all_weights = np.zeros((n_experiments, len(n_samples_irl), num_agents))
+    res = np.zeros((n_experiments, len(n_samples_irl), 6))
+    all_weights = np.zeros((n_experiments, len(n_samples_irl), 6))
 
     env = GridWorldAction(shape=shape, rew_weights=rew_weights,
                           randomized_initial=True, horizon=horizon,
                           n_bases=n_basis, fail_prob=fail_prob,
                           border_width=1)
+
     if load_policy:
         print("Loading policy...")
         param = np.load(args.load_path + "/gridworld_param_%s_%s_%s_fail=%s.npy" % tuple(rew_weights + [fail_prob]))
     else:
         # Train expert
 
-        param, _, _, _, _ = gpomdp(env, num_batch=args.num_batches, batch_size=args.batch_size,
-                                    len_trajectories=horizon,
-                                    initial_param=np.zeros((np.prod(n_basis), 2)),
-                                    gamma=gamma, var_policy=var_policy, verbose=True)
+        param, _, _, _, _ = gpomdp(env, num_batch=40, batch_size=100, len_trajectories=horizon,
+                                   initial_param=np.zeros((np.prod(n_basis), 2)),
+                                   gamma=gamma, var_policy=var_policy, verbose=True)
 
         if save_policy:
-            np.save(args.save_path + "/gridworld_param_%s_%s_%s_fail=%s.npy" % tuple(rew_weights + [fail_prob]),
-                    param)
-
+            np.save(args.save_path + "/gridworld_param_%s_%s_%s_fail=%s.npy" % tuple(rew_weights + [fail_prob]), param)
 
     if args.render_policy:
-        _, _, _, _, _ = gpomdp(env, num_batch=100, batch_size=1, len_trajectories=horizon,
+        _, _, _, _, _ = gpomdp(env, num_batch=3, batch_size=1, len_trajectories=horizon,
                                initial_param=param,
                                gamma=gamma, var_policy=0., verbose=False, render=True)
 
-    print("Evaluating Policies")
-    _, results, _, _, _ = gpomdp(env, num_batch=1, batch_size=args.eval_episodes, len_trajectories=horizon,
-                                  initial_param=param,
-                                  gamma=gamma, var_policy=var_policy, verbose=False, render=False)
+    _, results, _, _, _ = gpomdp(env, num_batch=1, batch_size=500, len_trajectories=horizon,
+                                 initial_param=param,
+                                 gamma=gamma, var_policy=var_policy, verbose=False, render=False)
 
-    print(results)
-
-    all_args = N_traj_irl, n_samples_irl, horizon, fail_prob, save_gradients, param, rew_weights, var_policy, \
-               args.save_path, args.load_gradients, args.load_path, agents_to_params, args.num_batches, \
-               args.batch_size, args.eval_episodes
-
+    all_args = N_traj_irl, n_samples_irl, horizon, fail_prob, save_gradients, param, var_policy, args.save_path
     all_results = Parallel(n_jobs=args.n_jobs, verbose=51)(
         delayed(_perform_irl)(i, *all_args) for i in range(n_experiments))
-    # all_results = [_perform_irl(0, *all_args)]
+
     for i in range(n_experiments):
-        res[i], all_weights[i] = all_results[i]
+        res[i], all_weights[i], agents = all_results[i]
 
-    print(res, all_weights)
-
-    np.save(args.save_path + '/gridworld_res_irl_all_%s.npy' % fail_prob, res)
-    np.save(args.save_path + '/gridworld_res_irl_w_all_%s.npy' % fail_prob, all_weights)
+    np.save(args.save_path + '/gridworld_res_irl_%s.npy' % fail_prob, res)
+    np.save(args.save_path + '/gridworld_res_irl_w_%s.npy' % fail_prob, all_weights)
 
     if args.plot_results:
         plot_grid(n_samples_irl, res, all_weights, agents, save_path=args.save_path)

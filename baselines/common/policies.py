@@ -6,7 +6,7 @@ from baselines.common.input import observation_placeholder, encode_observation
 from baselines.common.tf_util import adjust_shape
 from baselines.common.mpi_running_mean_std import RunningMeanStd
 from baselines.common.models import get_network_builder
-
+import numpy as np
 import gym
 
 
@@ -16,7 +16,7 @@ class PolicyWithValue(object):
     """
 
     def __init__(self, env, observations, latent, estimate_q=False, vf_latent=None,
-                 sess=None,trainable_variance=True,init_logstd=0, clip=None, **tensors):
+                 sess=None,trainable_variance=True, trainable_bias=True, init_logstd=0, clip=None, scope_name='pi', **tensors):
         """
         Parameters:
         ----------
@@ -48,6 +48,7 @@ class PolicyWithValue(object):
 
         self.pd, self.pi = self.pdtype.pdfromlatent(latent, init_scale=0.01,
                                                     trainable_variance=trainable_variance,
+                                                    trainable_bias=trainable_bias,
                                                     init_logstd=init_logstd,
                                                     clip=clip)
 
@@ -56,7 +57,7 @@ class PolicyWithValue(object):
         self.neglogp = self.pd.neglogp(self.action)
         self.logits=tf.nn.softmax(self.pd.flatparam())
         self.sess = sess
-
+        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
         if estimate_q:
             assert isinstance(env.action_space, gym.spaces.Discrete)
             self.q = fc(vf_latent, 'q', env.action_space.n)
@@ -64,6 +65,7 @@ class PolicyWithValue(object):
         else:
             self.vf = fc(vf_latent, 'vf', 1)
             self.vf = self.vf[:,0]
+
 
     def _evaluate(self, variables, observation, stochastic, **extra_feed):
         sess = self.sess or tf.get_default_session()
@@ -98,6 +100,17 @@ class PolicyWithValue(object):
             state = None
         return a, v, state, logits
 
+    def get_weights(self, layer_wise=False):
+        sess = self.sess or tf.get_default_session()
+        if not layer_wise:
+            layers = sess.run(self.vars)
+            weights = []
+            for layer in layers:
+                weights.append(layer.ravel())
+            return np.concatenate(weights)
+        else:
+            return sess.run(self.vars)
+
     def value(self, ob, *args, **kwargs):
         """
         Compute value estimate(s) given the observation(s)
@@ -122,12 +135,12 @@ class PolicyWithValue(object):
         tf_util.load_variables(load_path,extra_vars=extra_vars)#, sess=self.sess
 
 def build_policy(env, policy_network, value_network=None, normalize_observations=False, estimate_q=False,
-                 trainable_variance=True, init_logstd=0,clip=None, **policy_kwargs):
+                 trainable_variance=True, trainable_bias=True, init_logstd=0,clip=None, **policy_kwargs):
     if isinstance(policy_network, str):
         network_type = policy_network
         policy_network = get_network_builder(network_type)(**policy_kwargs)
 
-    def policy_fn(nbatch=None, nsteps=None, sess=None, observ_placeholder=None):
+    def policy_fn(nbatch=None, nsteps=None, sess=None, observ_placeholder=None, scope_name="pi"):
         ob_space = env.observation_space
 
         X = observ_placeholder if observ_placeholder is not None else observation_placeholder(ob_space, batch_size=nbatch)
@@ -174,8 +187,10 @@ def build_policy(env, policy_network, value_network=None, normalize_observations
             sess=sess,
             estimate_q=estimate_q,
             trainable_variance=trainable_variance,
+            trainable_bias=trainable_bias,
             init_logstd=init_logstd,
             clip=clip,
+            scope_name=scope_name,
             **extra_tensors
         )
         return policy

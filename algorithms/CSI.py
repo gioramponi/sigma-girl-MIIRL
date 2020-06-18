@@ -1,13 +1,7 @@
 import os
 import sys
 import numpy as np
-from tqdm import trange
-import time
-import glob
 import re
-import argparse
-from trajectories_reader import read_trajectories
-
 path_to_add = os.path.dirname(os.path.abspath(__file__)) + '/..'
 sys.path = [path_to_add] + sys.path
 from sklearn.linear_model import LinearRegression
@@ -22,12 +16,11 @@ def natural_sort(l):
     alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
     return sorted(l, key=alphanum_key)
 
-
 from sklearn.linear_model import LogisticRegression
 
-
 def scirl(states, actions, mask, reward_features, gamma):
-    # Train the classifier
+
+    #Train the classifier
     mask = mask.astype(bool)
     discounter = gamma ** np.arange(states.shape[1])
     feature_expectation = np.cumsum(reward_features * discounter[None, :, None] * mask[:, :, None], axis=1)
@@ -66,7 +59,8 @@ def scirl(states, actions, mask, reward_features, gamma):
 
 
 def csi(states, actions, mask, reward_features, gamma, use_heuristic=False):
-    # Train the classifier
+
+    #Train the classifier
     mask = mask.astype(bool)
     n_steps = int(np.sum(mask))
     lens = np.sum(mask, axis=1).astype(int)

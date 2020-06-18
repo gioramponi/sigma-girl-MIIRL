@@ -562,3 +562,12 @@ def algorithm_u(ns, m):
     for j in range(1, m + 1):
         a[n - m + j] = j - 1
     return f(m, n, 0, n, a)
+
+
+def feature_expectations(rewards, gamma):
+    discount_factor_timestep = np.power(gamma * np.ones(rewards.shape[1]),
+                                        range(rewards.shape[1]))
+    discounted_return = discount_factor_timestep[np.newaxis, :, np.newaxis] * rewards
+    reward_est_timestep = np.sum(discounted_return, axis=1)
+    return reward_est_timestep
+

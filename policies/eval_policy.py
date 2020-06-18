@@ -3,12 +3,9 @@ import time
 
 
 def eval_policy(env, pi, n_episodes, verbose=True, interactive=False):
-
     rewards = []
     logs = []
-
     for i in range(n_episodes):
-
         start = time.time()
         s = env.reset(ohe=True)
         t = 0
@@ -25,7 +22,6 @@ def eval_policy(env, pi, n_episodes, verbose=True, interactive=False):
             t += 1
             if done:
                 break
-
         if verbose:
             print("Episode {0}: Return = {1}, Duration = {2}, Time = {3} s".format(i, rew, t, time.time() - start))
         rewards.append(rew)
@@ -35,21 +31,16 @@ def eval_policy(env, pi, n_episodes, verbose=True, interactive=False):
     std = np.std(rewards)
     if verbose:
         print("Average Return = {0} +- {1}".format(avg, std))
-
     env.reset()
-
     return avg, std, logs
 
-def eval_and_render_policy(env, pi, n_episodes, verbose=True, interactive=False):
 
+def eval_and_render_policy(env, pi, n_episodes, verbose=True, interactive=False):
     rewards = []
     logs = []
-
     n_episodes_render = 1
     horizon = 200
-
     for i in range(n_episodes):
-
         start = time.time()
         s = env.reset(ohe=True)
         t = 0
@@ -67,12 +58,10 @@ def eval_and_render_policy(env, pi, n_episodes, verbose=True, interactive=False)
             if interactive or (i < n_episodes_render and t < horizon):
                 print("Action=%s" % a)
                 print("Reward=%s" % r)
-                #input()
             rew += r
             t += 1
             if done:
                 break
-
         if verbose:
             print("Episode {0}: Return = {1}, Duration = {2}, Time = {3} s".format(i, rew, t, time.time() - start))
         rewards.append(rew)
@@ -84,5 +73,4 @@ def eval_and_render_policy(env, pi, n_episodes, verbose=True, interactive=False)
         print("Average Return = {0} +- {1}".format(avg, std))
 
     env.reset()
-
     return avg, std, logs
