@@ -1,5 +1,6 @@
 # Truly batch Model-free Inverse Reinforcement Learning about Multiple Intentions
-Code of Truly Batch Model-Free Inverse Reinforcement Learning about Multiple Intentions (http://proceedings.mlr.press/v108/ramponi20a/ramponi20a.pdf)
+Code of Truly Batch Model-Free Inverse Reinforcement Learning about Multiple Intentions (http://proceedings.mlr.press/v108/ramponi20a/ramponi20a.pdf.
+
 This repository contains the implementation of the SIGMA-GIRL algorithm and experiments in simulated domains, together with implementation of algorithms we used to confront our results.
 
 ## Available algorithms
