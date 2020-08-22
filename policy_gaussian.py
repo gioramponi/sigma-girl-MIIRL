@@ -99,7 +99,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-trajectories', type=int, default=5)
     parser.add_argument('--batch-size', type=int, default=100)
     parser.add_argument('--len-trajectories', type=int, default=30)
-    parser.add_argument('--file', type=str, default='data/cont_gridworld_multiple/gpomdp2')
+    parser.add_argument('--file', type=str, default='data/cont_gridworld_multiple/gpomdp')
     parser.add_argument('--model_dir', type=str, default="models/gridworld/")
     parser.add_argument('--gamma', type=float, default=0.999)
     parser.add_argument('--var', type=float, default=0.1)
