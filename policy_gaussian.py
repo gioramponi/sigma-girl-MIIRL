@@ -1,7 +1,9 @@
+
 import numpy as np
 from time import sleep
 import pickle
 import argparse
+
 
 
 def create_batch_trajectories(env, batch_size, len_trajectories, param, variance, render=False):
@@ -35,11 +37,13 @@ def create_batch_trajectories(env, batch_size, len_trajectories, param, variance
                 break
             state = next_state
 
+
     return states, actions, rewards, reward_features, states_
 
 
+
 def gradient_est(param, batch_size, len_trajectories, states, actions, var_policy):
-    gradients = np.zeros((batch_size, len_trajectories, 50))
+    gradients = np.zeros((batch_size, len_trajectories, 25, 2))
     for b in range(batch_size):
         for t in range(len_trajectories):
             action = actions[b,t]
@@ -47,7 +51,7 @@ def gradient_est(param, batch_size, len_trajectories, states, actions, var_polic
                 gradients[b,t,:] = np.zeros_like(gradients[b,t,:])
             else:
                 state = np.array(states[b,t])
-                gradients[b,t,:] = (((action - np.dot(param.T, state)).reshape(-1,1) * np.array([state,state])).T / var_policy).reshape(-1)
+                gradients[b,t,:] = (((action - np.dot(param.T, state)).reshape(-1,1) * np.array([state,state])).T / var_policy)
     return gradients
 
 
@@ -62,7 +66,6 @@ def gpomdp(env, num_batch, batch_size, len_trajectories, initial_param, gamma, v
     from estimators.gradient_descent import Adam
     optimizer = Adam(learning_rate=0.1, ascent=True)
     optimizer.initialize(param)
-
     for i in range(num_batch):
         if i > 0:
             param = optimizer.update(gradient)
@@ -91,33 +94,45 @@ def gpomdp(env, num_batch, batch_size, len_trajectories, initial_param, gamma, v
     return param, results, states, rewards__, gradients__
 
 
+def train_policy(args, direction):
+    env = continuous_gridworld2.GridWorld(randomized_initial=True, direction=direction, fail_prob=0.)
+    param,_,_,_,_ = gpomdp(env, 100, 100, 30, np.random.random((25,2)),args.gamma, args.var)
+    return param
+
 if __name__ == '__main__':
     from envs import continuous_gridworld2
     import os
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--num-trajectories', type=int, default=5)
+    parser.add_argument('--num-trajectories', type=int, default=20)
     parser.add_argument('--batch-size', type=int, default=100)
     parser.add_argument('--len-trajectories', type=int, default=30)
-    parser.add_argument('--file', type=str, default='data/cont_gridworld_multiple/gpomdp')
-    parser.add_argument('--model_dir', type=str, default="models/gridworld/")
+    parser.add_argument('--file', type=str)
     parser.add_argument('--gamma', type=float, default=0.999)
     parser.add_argument('--var', type=float, default=0.1)
+    parser.add_argument('--train-policy', type=bool, default=False)
+
+
+
     args = parser.parse_args()
 
-    for t in ['border', 'up', 'down', 'center']:
-        with open(args.model_dir + "param_policy_%s.pkl" % t, "rb") as f:
-             param_policy = pickle.load(f)
+    for t in ['center','border', 'up', 'down', 'center']:
+        if not args.train_policy:
+            with open("param_policy_%s.pkl" % t, "rb") as f:
+                param_policy = pickle.load(f)
+        else:
+            param_policy = train_policy(args, t)
+
         gamma = args.gamma
         var_policy = args.var
-        env = continuous_gridworld2.GridWorld2(randomized_initial=False, direction=t, fail_prob=0.)
+        env = continuous_gridworld2.GridWorld(randomized_initial=False, direction=t, fail_prob=0.)
         for i in range(args.num_trajectories):
-            url = args.file + '/' + t + '/dataset_'+str(i)
+            url = args.file
             try:
-                os.makedirs(url)
+                os.makedirs(url + '/dataset_'+str(i))
             except:
                 print('created')
-            url = url
+            url = url + '/dataset_'+str(i)
             states, actions, _, rewards, st = create_batch_trajectories(env, args.batch_size, args.len_trajectories, param_policy, var_policy, False)
             with open(url+'/trajectories.pkl', 'wb') as f:
                 pickle.dump([states, actions, rewards, st], f)
