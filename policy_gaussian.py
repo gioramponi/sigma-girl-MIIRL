@@ -1,9 +1,7 @@
-
 import numpy as np
 from time import sleep
 import pickle
 import argparse
-
 
 
 def create_batch_trajectories(env, batch_size, len_trajectories, param, variance, render=False):
@@ -37,9 +35,7 @@ def create_batch_trajectories(env, batch_size, len_trajectories, param, variance
                 break
             state = next_state
 
-
     return states, actions, rewards, reward_features, states_
-
 
 
 def gradient_est(param, batch_size, len_trajectories, states, actions, var_policy):
@@ -100,27 +96,28 @@ if __name__ == '__main__':
     import os
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--num-trajectories', type=int, default=20)
+    parser.add_argument('--num-trajectories', type=int, default=5)
     parser.add_argument('--batch-size', type=int, default=100)
     parser.add_argument('--len-trajectories', type=int, default=30)
-    parser.add_argument('--file', type=str)
+    parser.add_argument('--file', type=str, default='data/cont_gridworld_multiple/gpomdp2')
+    parser.add_argument('--model_dir', type=str, default="models/gridworld/")
     parser.add_argument('--gamma', type=float, default=0.999)
     parser.add_argument('--var', type=float, default=0.1)
     args = parser.parse_args()
 
     for t in ['border', 'up', 'down', 'center']:
-        with open("param_policy_%s.pkl" % t, "rb") as f:
+        with open(args.model_dir + "param_policy_%s.pkl" % t, "rb") as f:
              param_policy = pickle.load(f)
         gamma = args.gamma
         var_policy = args.var
-        env = continuous_gridworld2.GridWorld(randomized_initial=False, direction=t, fail_prob=0.)
+        env = continuous_gridworld2.GridWorld2(randomized_initial=False, direction=t, fail_prob=0.)
         for i in range(args.num_trajectories):
-            url = args.file
+            url = args.file + '/' + t + '/dataset_'+str(i)
             try:
-                os.makedirs(url + '/dataset_'+str(i))
+                os.makedirs(url)
             except:
                 print('created')
-            url = url + '/dataset_'+str(i)
+            url = url
             states, actions, _, rewards, st = create_batch_trajectories(env, args.batch_size, args.len_trajectories, param_policy, var_policy, False)
             with open(url+'/trajectories.pkl', 'wb') as f:
                 pickle.dump([states, actions, rewards, st], f)

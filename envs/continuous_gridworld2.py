@@ -80,6 +80,40 @@ class GridWorld2(GridWorld):
         # print(self.state, features)
         return features
 
+
+    def reached_goal(self, state=None):
+        if state is None:
+            state = self.state
+        return np.linalg.norm(state - self.goal) < self.goal_radius
+
+    def discretize_action(self, action):
+
+        x, y = np.array(action).clip([-1, -1], [1, 1])
+        if x < 0.5 and x > -0.5 and y >= 0:
+            new_action = 0  # su
+        elif x < 0.5 and x > -0.5 and y <= 0:
+            new_action = 1  # giu
+        elif y < 0.5 and y > -0.5 and x >= 0:
+            new_action = 2  # DESTRA
+        elif y < 0.5 and y > -0.5 and x <= 0:
+            new_action = 3  # SINISTRA
+        elif x > 0 and y > 0:
+            new_action = 4  # DIAGONALE DESTRA SU
+        elif x <= 0 and y > 0:
+            new_action = 5  # DIAGONALE SINISTRA SU
+        elif x > 0 and y <= 0:
+            new_action = 6  # DIAGONALE DESTRA GIU
+        elif x <= 0 and y <= 0:
+            new_action= 7  # DIAGONALE SINISTRA GIU
+        return np.array([new_action])
+
+
+    def get_CSI_reward(self, action, rbf=False, ohe=False):
+        action = self.discretize_action(action)
+        return self.CSI.predict([np.concatenate((self.state, action))])
+
+
+
     def step(self, a, rbf=False, ohe=False):
         if self.reached_goal():
             return self.get_state(rbf=rbf,ohe=ohe), 0., 1, {'features': np.zeros(3)}
@@ -122,6 +156,11 @@ class GridWorld2(GridWorld):
         return self.get_state(rbf=rbf,ohe=ohe), reward, self.done,  {'features': features}, self.state
 
 
+    def get_state(self, rbf=False,ohe=False):
+        if rbf or ohe:
+            s = self.feat_func(self.state)
+            return s
+        return self.state
 
 
     def reset(self, state=None, rbf=False, ohe=False):
