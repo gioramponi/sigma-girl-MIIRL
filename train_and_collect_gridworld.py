@@ -115,7 +115,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    for t in ['center', 'border', 'up', 'down', 'center']:
+    for t in ['center', 'border', 'up', 'down']:
         env = continuous_gridworld2.GridWorld2(randomized_initial=False, direction=t, fail_prob=0.)
         if not args.train_policy:
             with open(args.model_dir + "param_policy_%s.pkl" % t, "rb") as f:
