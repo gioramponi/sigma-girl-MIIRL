@@ -1,33 +1,16 @@
-import pandas as pd
+import pickle
 import numpy as np
 import argparse
 from joblib import Parallel, delayed
 import datetime
-from algorithms.highway_mlirl import multiple_intention_irl
+from algorithms import mirex
+import pandas as pd
+import random
 
 
-def discretize_actions(action):
-    new_action = np.zeros((action.shape[0], action.shape[1]))
-    val = np.zeros(4)
-    for s in range(action.shape[0]):
-        for t in range(action.shape[1]):
-            x, y = action[s][t].clip([-1, -1], [1, 1])
-            if 0.5 > x > -0.5 and y > 0:
-                new_action[s, t] = 0  # su
-                val[0] = 1
-            elif 0.5 > x > -0.5 and y <= 0:
-                new_action[s, t] = 1  # giu
-                val[1] = 1
-            elif 0.5 > y > -0.5 and x >= 0:
-                new_action[s, t] = 2  # DESTRA
-                val[2] = 1
-            elif 0.5 > y > -0.5 and x <= 0:
-                new_action[s, t] = 3  # SINISTRA
-                val[3] = 1
-    return new_action
-
-
+# todo creating reward for every possible state in state space ?
 def create_rewards(state_space, goal, grid_size=9):
+    # ! just do based on ranking? reward = score? which score from all trans in traj? avg, last one?
     rewards = np.zeros((state_space, 3))
     for s in range(state_space):
         x, y = np.floor(s / grid_size), s % grid_size
@@ -38,6 +21,10 @@ def create_rewards(state_space, goal, grid_size=9):
         else:
             rewards[s][0] = -1
     return rewards
+
+# todo: discrietize, limit max num_colls, num_offroad = 10, speed = 30, num_configs = state_space
+# todo: replace with state repr [2, 3,], size (10, 3) if 10 states
+# todo: later: deep QN for sepsis
 
 
 def get_states_actions_intents(args):
@@ -75,13 +62,18 @@ def get_states_actions_intents(args):
 
 def discretize_speed(states):
     speed_bins = np.array([25])
+    # collisions_bins = np.array([5, 10])
+    # offroad_bins = np.array([5, 10])
     for traj in states:
         for state in traj:
-            # discretize speed according to under 25 and above 25 bins
-            state[2] = int(np.digitize(state[2], speed_bins, right=False))    # 0, 1
-    return states
+            # discretize every feature according to bins
+            state[2] = np.digitize(state[2], speed_bins, right=False)    # 0, 1
+            # state[1] = np.digitize(state[1], collisions_bins, right=False)  # 0, 1, 2
+            # state[2] = np.digitize(state[2], offroad_bins, right=False) # 0, 1, 2
 
+    return states.astype(int)
 
+# todo: add actions
 def assign_state_indices(states):
     idx_dict = {}
     reshaped_states = states.reshape(-1, states.shape[-1])  # -1, 5
@@ -96,60 +88,72 @@ def assign_state_indices(states):
 
     return idx_dict, unique_states, len(idx_dict)
 
+# todo: by Chase
+def get_traj_preferences(args):
+    prefs_df = pd.read_csv(args.load_path + args.prefs_file)
+    trajs_safety = prefs_df.groupby("traj")["safety_score"].mean()
+
+    prefs = []
+
+    traj_indices = prefs_df["traj"].unique()    # ? why
+    for t1 in traj_indices:
+        t2 = random.choice(traj_indices)
+        while (t2 == t1):
+            t2 = random.choice(traj_indices)
+        if trajs_safety[t1] > trajs_safety[t2]:
+            prefs += [(t1, t2)]
+        else:
+            prefs += [(t2, t1)]
+
+    # array of tuples (ti, tj), where ti > tj, ti,tj = traj numbers
+    return prefs
+
+# todo: by Chase
+# def rank_trajs(args):
+
+
 
 def run(id, seed, args):
     np.random.seed(seed)
-    state_space = args.state_dim
-    action_space = args.action_dim
     K = args.K
-    goal = np.array([8, 4])
-    gamma = args.gamma
     n_iterations = args.n_iterations
-    n_samples_irl = [5, 10, 20, 30, 100]
-    res = np.zeros(len(n_samples_irl))
-    path = args.load_path
-    if args.beta == '':
-        betas = [.5]
-    else:
-        betas = [float(x) for x in args.beta.split(',')]
-    for i_beta, beta in enumerate(betas):
-        t_s = np.zeros(len(n_samples_irl))
 
-    # get trajs data
+    # retrieve trajs data
     all_states, len_trajs, all_actions, gt_intents = get_states_actions_intents(args)
     # discretize continuous state space into 2 bins (to avoid needing a DQN for their Bellman Update)
     discretize_speed(all_states)
     # ? remember why we did this
     all_states[all_states == 0] = -1
-    # to be able to map each state to a trans prob, zeta and grad
-    states_idx_dict, unique_states, state_space = assign_state_indices(all_states)
-    features = unique_states
 
+    # to be able to map each state to a trans prob, zeta and grad
+    idx_dict, unique_states, state_space = assign_state_indices(all_states)
+    features = unique_states
+    # features = np.concatenate(all_states, axis=0) # todo: add action, for mirex
+    # ! features vector vs unique states 
+    # todo: compute this when needed, uses too much memory now
+    # todo currently
+    # rankings = rank_trajs(states)
+
+    preferences = get_traj_preferences(args)
     d_start = datetime.datetime.now()
-    z, theta = multiple_intention_irl(all_states, all_actions, features, K, gt_intents,
-                               len_trajs, states_idx_dict, state_space, action_space, beta,
-                                gamma=gamma,
-                                n_iterations=n_iterations)
-    t_s[n_i] = (datetime.datetime.now() - d_start).total_seconds()
-    res[n_i] = r
+    # todo: some accuracy check
+    res = mirex.multiple_intention_irl(all_states, all_actions, preferences, len_trajs, args.num_features, K, n_iterations=n_iterations)
+    t_s = (datetime.datetime.now() - d_start).total_seconds()
     return res, t_s
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--K', default=4, type=int, help='number of clusters')
-    parser.add_argument('--state_dim', type=int, default=81, help='state space dimension')
-    parser.add_argument('--action_dim', type=float, default=3, help='action space cardinality')
     parser.add_argument('--max_num_trans', type=int, default=40, help='max number of transition states per trajectory')
     parser.add_argument('--num_features', type=int, default=5)
-    parser.add_argument('--beta', type=str, default='.5', help='comma separated valued of beta parmaeter to consider')
-    parser.add_argument('--gamma', type=int, default=0.99, help='discount_factor')
-    parser.add_argument('--load_path', type=str, default='sigma-girl-MIIRL/data/car_highway/sample_dataset/')
-    parser.add_argument('--trajs_file', type=str, default='condensed_binary_highway_data.csv')
     parser.add_argument('--n_jobs', type=int, default=1, help='number of parallel jobs')
     parser.add_argument('--n_iterations', type=int, default=20, help='number of iterations of ml-irl')
     parser.add_argument('--n_experiments', type=int, default=20, help='number of parallel jobs')
     parser.add_argument('--seed', type=int, default=-1, help='random seed, -1 to have a random seed')
+    parser.add_argument('--load_path', type=str, default='data/car_highway/sample_dataset/')
+    parser.add_argument('--trajs_file', type=str, default='condensed_binary_highway_data.csv')
+    parser.add_argument('--prefs_file', type=str, default='data_safety_rankings.csv')
     args = parser.parse_args()
     seed = args.seed
     if seed == -1:
@@ -159,3 +163,4 @@ if __name__ == '__main__':
     results = Parallel(n_jobs=args.n_jobs, backend='loky')(
         delayed(run)(id, seed, args) for id, seed in zip(range(args.n_experiments), seeds))
     np.save(args.load_path + '/res_mlirl_final13.npy', results)
+
