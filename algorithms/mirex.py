@@ -1,39 +1,32 @@
 import numpy as np
-from autograd import grad, jacobian
+import torch
+from torch import nn
+import torch.optim as optim
 
 
 ##Implementation of our algorithm
 
-# ! still need to verify
-def likelihood_sum(states, actions, len_trajs, prefs, K, l, W_l, W, z):
-    log_likelihood_sum = 0.0
-    for (i, j) in prefs:
-        for m in range(K):
-            # ! idk, notation error maybe --no y?
-            # Compute the log-probability of xi_i < xi_j given the current values of theta_l and theta_m
-            log_likelihood_sum += np.log(get_pref_likelihood(states, actions, len_trajs, i, j, W_l, W[m], W)) * z[i,j,l,m]
-    return -log_likelihood_sum
 
-
-# ! confused, need to verify
-def maximum_likelihood_irl(states, actions, len_trajs, prefs, K, W, z, n_iteration=10, gradient_iterations=100):
-    # ! where is num_gradient iters used
-    objective_fn = lambda W_l: likelihood_sum(states, actions, len_trajs, prefs, K, l, W_l._value, W, z)
-    grad_obj = grad(objective_fn)
-    hess_obj = jacobian(grad_obj)
+def maximum_likelihood_irl(states, actions, len_trajs, prefs, K, W, z, n_iterations=10, gradient_iterations=100, alpha=0.001):
+    # W_tensor = torch.tensor(W, requires_grad=True)
+    # optimizer = optim.Adam([W_tensor], lr=alpha)
+    optimizer = optim.Adam([torch.tensor(W[l], requires_grad=True) for l in range(K)], lr=alpha)
 
     # update reward weights for every intention l
     for l in range(K):
         # init reward weights
-        theta_l = np.array(W[l])
-        # ! is this right?
-        for i in range(n_iteration):
-            grad_l = grad_obj(theta_l)
-            hess_l = hess_obj(theta_l)
-            theta_l -= np.linalg.solve(hess_l, grad_l)
-            # ! do we have learning rate, e.g. alpha
-            # param += .1 * gradients     # alpha = 0.001
-        W[l, :] = theta_l
+        theta_l = optimizer.param_groups[0]['params'][l]
+        for i in range(n_iterations):
+            optimizer.zero_grad()
+            likelihood = 0.0
+            for (i, j) in prefs:
+                for m in range(K):
+                    likelihood += np.log(get_pref_likelihood(states, actions, len_trajs, i, j, theta_l.data.numpy(), W[m], W)) * z[i,j,l,m]
+            loss = torch.tensor([-likelihood], requires_grad=True)
+            loss.backward()
+            optimizer.step()
+            theta_l = optimizer.param_groups[0]['params'][l].detach()
+        W[l] = theta_l.numpy()
     return W
 
 
@@ -61,7 +54,8 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, n
         print('Iteration %d' % it)
         prev_assignment = z
         # E-Step
-        z = e_step(states, actions, prefs, len_trajs, W, rho_s)
+        # TODO: bring back after testing
+        # z = e_step(states, actions, prefs, len_trajs, W, rho_s)
         # M-Step
         # get new reward params for every intention
         W = maximum_likelihood_irl(states=states,
@@ -71,7 +65,7 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, n
                                     K=K,
                                     W=W,
                                     z=z,
-                                    n_iteration=n_iterations)
+                                    n_iterations=n_iterations)
         # update the joint priors
         for l in range(K):
             for m in range(K):
@@ -147,5 +141,5 @@ def e_step(states, actions, prefs, len_trajs, W_t, rho_s):
                     zeta[i,j,l,m] = numerator / denominator
             print("finished pref")
 
-    # ! all ones on first iter ??
+    # ! some ones on first iter ??
     return zeta

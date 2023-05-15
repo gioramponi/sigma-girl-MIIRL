@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.optim as optim
+
 a = 2.4785694
 b = 7.3256989
 error = 0.1
