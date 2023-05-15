@@ -125,15 +125,6 @@ def run(id, seed, args):
     # ? remember why we did this
     all_states[all_states == 0] = -1
 
-    # to be able to map each state to a trans prob, zeta and grad
-    idx_dict, unique_states, state_space = assign_state_indices(all_states)
-    features = unique_states
-    # features = np.concatenate(all_states, axis=0) # todo: add action, for mirex
-    # ! features vector vs unique states 
-    # todo: compute this when needed, uses too much memory now
-    # todo currently
-    # rankings = rank_trajs(states)
-
     preferences = get_traj_preferences(args)
     d_start = datetime.datetime.now()
     # todo: some accuracy check
