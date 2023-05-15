@@ -12,6 +12,7 @@ def maximum_likelihood_irl(states, actions, len_trajs, prefs, K, W, z, n_iterati
     # optimizer = optim.Adam([W_tensor], lr=alpha)
     optimizer = optim.Adam([torch.tensor(W[l], requires_grad=True) for l in range(K)], lr=alpha)
 
+    # ! PROBLEM: W not changing
     # update reward weights for every intention l
     for l in range(K):
         # init reward weights
@@ -54,8 +55,8 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, n
         print('Iteration %d' % it)
         prev_assignment = z
         # E-Step
-        # TODO: bring back after testing
-        # z = e_step(states, actions, prefs, len_trajs, W, rho_s)
+        # note: remove after testing
+        z = e_step(states, actions, prefs, len_trajs, W, rho_s)
         # M-Step
         # get new reward params for every intention
         W = maximum_likelihood_irl(states=states,
