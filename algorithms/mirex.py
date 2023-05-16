@@ -82,7 +82,27 @@ def maximum_likelihood_irl(states, actions, len_trajs, prefs, K, W, z, n_iterati
     return W
 
 
-def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, n_iterations=20, tolerance=1.e-5):
+def print_accuracy(num_trajs, K, z, gt_intents, rho_s, theta):
+    intent_map = {'Safe': 0, 'Student': 1, 'Demolition': 2, 'Nasty': 3}
+    y_true = np.array([intent_map[intent] for intent in gt_intents])
+    intent_pairs_shape = (K, K)
+
+    assigned_intents = np.full((num_trajs), -1)
+    for i in range(num_trajs // 2):
+        for j in range(num_trajs // 2, num_trajs):
+            (l, m) = np.unravel_index(np.argmax(z[i,j]), intent_pairs_shape)
+            assigned_intents[i] = l
+            assigned_intents[j] = m
+
+    print(f"-------------ASSIGNMENTS-------------")
+    for i in range(K):
+        cluster_indices = np.where(y_true == i)[0]
+        print(f"Intention {i}: {assigned_intents[cluster_indices]}")
+    print(f"-------------PRIORS-------------\n{rho_s}")
+    print(f"-------------THETAS-------------\n{theta}")
+
+
+def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, gt_intents, n_iterations=20, tolerance=1.e-5):
     # define joint prior probabilities, K = num_clusters
     rho_s = np.ones((K, K))
     rho_s /= K**2
@@ -91,8 +111,9 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, n
     # 5 features: speed, num_collisions (+neg), num_offroad_visits (+neg)
     W = np.random.random((K, num_features + 1)) # +1 for the actions
 
+    num_trajs = len(states)
     # shape = (num_trajs, num_trajs, k, k) bc prob of assigning traj i, j to intentions l, m
-    z = np.random.random((len(states), len(states), K, K))
+    z = np.random.random((num_trajs, num_trajs, K, K))
     z /= np.sum(z, axis=(-1, -2), keepdims=True) # normalize the random nums to get a prob distrib
     # print(np.sum(z[0,0,:,:]))
     # Initialize previous assignment for convergence checking
@@ -100,14 +121,16 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, n
 
     # EM algorithm
     it = 0    # curr_iter
-    max_iteration = 3
+    max_iteration = 20
     # perform EM until parameters converge
     while it < max_iteration and np.max(np.abs(z - prev_assignment)) > tolerance:
-        print('Iteration %d' % it)
+        print('Iteration {0}, convergence {1}'.format(it, np.max(np.abs(z - prev_assignment))))
         prev_assignment = z
         # E-Step
-        # note: remove after testing
+        # ? is zeta 4-way symmetric?
         z = e_step(states, actions, prefs, len_trajs, W, rho_s)
+        if not (it % 5):
+            print_accuracy(num_trajs, K, z, gt_intents, rho_s, W)
         # M-Step
         # get new reward params for every intention
         W = maximum_likelihood_irl(states=states,
@@ -169,7 +192,7 @@ def get_pref_likelihood(states, actions, len_trajs, i, j, theta_yi, theta_yj, W)
         # to compute softmax prob, sum for every feature vector in traj i and j
         numerator = np.sum(exp_j)
         denominator = numerator + np.sum(exp_i)
-
+    # ! PROBLEM: check for div by zero/nans
     return numerator / denominator
 
 

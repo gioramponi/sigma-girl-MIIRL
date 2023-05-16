@@ -140,7 +140,9 @@ def run(id, seed, args):
     preferences = get_traj_preferences(args)
     d_start = datetime.datetime.now()
     # todo: some accuracy check
-    res = mirex.multiple_intention_irl(all_states, all_actions, preferences, len_trajs, args.num_features, K, n_iterations=n_iterations)
+    res = mirex.multiple_intention_irl(all_states, all_actions, preferences,
+                                       len_trajs, args.num_features, K,
+                                       gt_intents, n_iterations=n_iterations)
     t_s = (datetime.datetime.now() - d_start).total_seconds()
     return res, t_s
 
