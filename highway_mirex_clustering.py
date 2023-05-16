@@ -7,6 +7,8 @@ from algorithms import mirex
 import pandas as pd
 import random
 
+import tensorboard
+
 
 # todo creating reward for every possible state in state space ?
 def create_rewards(state_space, goal, grid_size=9):
@@ -98,7 +100,14 @@ def get_traj_preferences(args):
     traj_indices = prefs_df["traj"].unique()    # ? why
     for t1 in traj_indices:
         t2 = random.choice(traj_indices)
-        while (t2 == t1):
+        # Old loop only checked if different traj
+        # while (t2 == t1):
+        #     t2 = random.choice(traj_indices)
+
+        # New loop also checks if the scores are not equal.
+        # I.e. get different partner traj as long as both are the same or have the same score
+        # (wouldn't make sense to put one before the other)
+        while (t2 == t1 or trajs_safety[t1] == trajs_safety[t2]):
             t2 = random.choice(traj_indices)
         if trajs_safety[t1] > trajs_safety[t2]:
             prefs += [(t1, t2)]
@@ -121,9 +130,12 @@ def run(id, seed, args):
     # retrieve trajs data
     all_states, len_trajs, all_actions, gt_intents = get_states_actions_intents(args)
     # discretize continuous state space into 2 bins (to avoid needing a DQN for their Bellman Update)
+    # print(all_states)
     discretize_speed(all_states)
+    # print(all_states)
     # ? remember why we did this
     all_states[all_states == 0] = -1
+    # print(all_states)
 
     preferences = get_traj_preferences(args)
     d_start = datetime.datetime.now()
