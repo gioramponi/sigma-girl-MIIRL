@@ -130,11 +130,8 @@ def run(id, seed, args):
                                len_trajs, states_idx_dict, state_space, action_space, beta,
                                 gamma=gamma,
                                 n_iterations=n_iterations)
-    # t_s[n_i] = (datetime.datetime.now() - d_start).total_seconds()
-    # res[n_i] = r
     t_s = (datetime.datetime.now() - d_start).total_seconds()
-    res = z
-    return res, t_s
+    return z, theta, t_s
 
 
 if __name__ == '__main__':

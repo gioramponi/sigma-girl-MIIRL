@@ -7,27 +7,6 @@ from algorithms import mirex
 import pandas as pd
 import random
 
-import tensorboard
-
-
-# todo creating reward for every possible state in state space ?
-def create_rewards(state_space, goal, grid_size=9):
-    # ! just do based on ranking? reward = score? which score from all trans in traj? avg, last one?
-    rewards = np.zeros((state_space, 3))
-    for s in range(state_space):
-        x, y = np.floor(s / grid_size), s % grid_size
-        if int(x) == goal[0] and int(y) == goal[1]:  # goal state
-            rewards[s][2] = 1
-        elif 1 <= x <= grid_size - 2 and 1 <= y <= grid_size - 2:  # slow_region
-            rewards[s][1] = -1
-        else:
-            rewards[s][0] = -1
-    return rewards
-
-# todo: discrietize, limit max num_colls, num_offroad = 10, speed = 30, num_configs = state_space
-# todo: replace with state repr [2, 3,], size (10, 3) if 10 states
-# todo: later: deep QN for sepsis
-
 
 def get_states_actions_intents(args):
     data_df = pd.read_csv(args.load_path + args.trajs_file)
@@ -64,33 +43,13 @@ def get_states_actions_intents(args):
 
 def discretize_speed(states):
     speed_bins = np.array([25])
-    # collisions_bins = np.array([5, 10])
-    # offroad_bins = np.array([5, 10])
     for traj in states:
         for state in traj:
-            # discretize every feature according to bins
             state[2] = np.digitize(state[2], speed_bins, right=False)    # 0, 1
-            # state[1] = np.digitize(state[1], collisions_bins, right=False)  # 0, 1, 2
-            # state[2] = np.digitize(state[2], offroad_bins, right=False) # 0, 1, 2
-
     return states.astype(int)
 
-# todo: add actions
-def assign_state_indices(states):
-    idx_dict = {}
-    reshaped_states = states.reshape(-1, states.shape[-1])  # -1, 5
-    non_nan_states = reshaped_states[~np.isnan(reshaped_states).any(axis=1)]
-    # dont count nan in unique states
-    unique_states = np.unique(non_nan_states, axis=0).astype(int)
 
-    for i, s in enumerate(unique_states):
-        # if state is non-visited (e.g. has nan num_collisions)
-        if not np.isnan(s[0]):
-            idx_dict[f"{s[0]}_{s[1]}_{s[2]}_{s[3]}_{s[4]}"] = i
-
-    return idx_dict, unique_states, len(idx_dict)
-
-# todo: by Chase
+# todo: integrate rankings here by Chase
 def get_traj_preferences(args):
     prefs_df = pd.read_csv(args.load_path + args.prefs_file)
     trajs_safety = prefs_df.groupby("traj")["safety_score"].mean()
@@ -100,11 +59,7 @@ def get_traj_preferences(args):
     traj_indices = prefs_df["traj"].unique()    # ? why
     for t1 in traj_indices:
         t2 = random.choice(traj_indices)
-        # Old loop only checked if different traj
-        # while (t2 == t1):
-        #     t2 = random.choice(traj_indices)
-
-        # New loop also checks if the scores are not equal.
+        # checks if different traj and the scores are not equal.
         # I.e. get different partner traj as long as both are the same or have the same score
         # (wouldn't make sense to put one before the other)
         while (t2 == t1 or trajs_safety[t1] == trajs_safety[t2]):
@@ -117,10 +72,6 @@ def get_traj_preferences(args):
     # array of tuples (ti, tj), where ti > tj, ti,tj = traj numbers
     return prefs
 
-# todo: by Chase
-# def rank_trajs(args):
-
-
 
 def run(id, seed, args):
     np.random.seed(seed)
@@ -130,16 +81,12 @@ def run(id, seed, args):
     # retrieve trajs data
     all_states, len_trajs, all_actions, gt_intents = get_states_actions_intents(args)
     # discretize continuous state space into 2 bins (to avoid needing a DQN for their Bellman Update)
-    # print(all_states)
     discretize_speed(all_states)
-    # print(all_states)
-    # ? remember why we did this
+    # ? remember why we did this, avoided zeroed out values somewhere
     all_states[all_states == 0] = -1
-    # print(all_states)
 
     preferences = get_traj_preferences(args)
     d_start = datetime.datetime.now()
-    # todo: some accuracy check
     res = mirex.multiple_intention_irl(all_states, all_actions, preferences,
                                        len_trajs, args.num_features, K,
                                        gt_intents, n_iterations=n_iterations)
@@ -167,5 +114,5 @@ if __name__ == '__main__':
     seeds = [np.random.randint(1000000) for _ in range(args.n_experiments)]
     results = Parallel(n_jobs=args.n_jobs, backend='loky')(
         delayed(run)(id, seed, args) for id, seed in zip(range(args.n_experiments), seeds))
-    np.save(args.load_path + '/res_mmirex_final13.npy', results)
+    np.save(args.load_path + '/res_mlirl_final13.npy', results)
 

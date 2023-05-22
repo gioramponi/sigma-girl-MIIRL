@@ -33,25 +33,17 @@ def tqdm_joblib(tqdm_object):
 
 
 def maximum_likelihood_irl(states, actions, len_trajs, prefs, K, W, z, n_iterations=10, gradient_iterations=100, alpha=0.001):
-    # ! PROBLEM: W not changing
-    # ~ Potential Fix:
-    #   PyTorch tracks tensor usage through torch functions
-    #   Need to use torch.Tensors when doing the loss, backprop, etc.
-
     # Copy of numpy ndarray
     W2 = W.copy()
     # Get list of tensors similar to before (torch)
     W2_t = [torch.tensor(W2[l], requires_grad=True) for l in range(K)]
     # Setup optimizer with weights (tensors)
     optimizer = optim.Adam(W2_t, lr=alpha)
-
     W_check = W.copy()
 
     # Optimize on each weight vector
     # update reward weights for every intention l
     for l in range(K):
-        # init reward weights
-        # theta_l = optimizer.param_groups[0]['params'][l]
         # theta_l would be weights for intention l, a.k.a. W2_t[l] because we want the tensor that actually represents those weights
         for i in range(n_iterations):
             optimizer.zero_grad()
@@ -59,17 +51,14 @@ def maximum_likelihood_irl(states, actions, len_trajs, prefs, K, W, z, n_iterati
             likelihood = torch.zeros(1)
             for (i, j) in prefs:
                 for m in range(K):
-                    # likelihood += np.log(get_pref_likelihood(states, actions, len_trajs, i, j, theta_l.data.numpy(), W[m], W)) * z[i,j,l,m]
                     # Using torch function (.log) and some of the inputs are not tensors (W2_t[l] and W2_t[m])
                     # Altered the get_pref_likelihood function to handle tensors or ndarrays...
                     likelihood += torch.log(get_pref_likelihood(states, actions, len_trajs, i, j, W2_t[l], W2_t[m], W)) * z[i,j,l,m]
-            # loss = torch.tensor([-likelihood], requires_grad=True)
             # 'likelihood' tensor should contain the history of "how it got here", 
-            #   so we can backprop on it since it can calculate its gradient
+            #  so we can backprop on it since it can calculate its gradient
             likelihood *= -1
             likelihood.backward()
             optimizer.step()
-            # theta_l = optimizer.param_groups[0]['params'][l].detach()
         # Remaking the original ndarray version of the weights from the backpropped tensors
         theta_l = W2_t[l].detach()
         W[l] = theta_l.numpy()
@@ -115,7 +104,6 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, g
     # shape = (num_trajs, num_trajs, k, k) bc prob of assigning traj i, j to intentions l, m
     z = np.random.random((num_trajs, num_trajs, K, K))
     z /= np.sum(z, axis=(-1, -2), keepdims=True) # normalize the random nums to get a prob distrib
-    # print(np.sum(z[0,0,:,:]))
     # Initialize previous assignment for convergence checking
     prev_assignment = np.ones(z.shape)
 
@@ -129,8 +117,7 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, g
         # E-Step
         # ? is zeta 4-way symmetric?
         z = e_step(states, actions, prefs, len_trajs, W, rho_s)
-        if not (it % 5):
-            print_accuracy(num_trajs, K, z, gt_intents, rho_s, W)
+        print_accuracy(num_trajs, K, z, gt_intents, rho_s, W)
         # M-Step
         # get new reward params for every intention
         W = maximum_likelihood_irl(states=states,
@@ -148,9 +135,6 @@ def multiple_intention_irl(states, actions, prefs, len_trajs, num_features, K, g
                 # ! but not all N^2 i,j pairs present in z, only ones in prefs
                 rho_s[l, m] = np.sum(z[:, :, l, m]) / len(states)**2
         it += 1
-
-        # Stopping criterion:
-        # np.max(np.abs(z - prev_assignment))
 
     return W
 
@@ -192,7 +176,7 @@ def get_pref_likelihood(states, actions, len_trajs, i, j, theta_yi, theta_yj, W)
         # to compute softmax prob, sum for every feature vector in traj i and j
         numerator = np.sum(exp_j)
         denominator = numerator + np.sum(exp_i)
-    # ! PROBLEM: check for div by zero/nans
+
     return numerator / denominator
 
 
@@ -214,7 +198,6 @@ def compute_likelihood(states, actions, i, j, l, m, prefs, len_trajs, K, W):
 
 # Pulled part of the E-Step computation to another function
 # just to use some multiprocessing.
-# It's nice when available :)
 def compute_pref_e(states, actions, i, j, prefs, len_trajs, K, W_t, rho_s):
     denominator = sum(compute_likelihood(states, actions, i, j, k, h, prefs, len_trajs, K, W_t) \
                                 * rho_s[k,h] for k in range(K) for h in range(K))
@@ -223,14 +206,11 @@ def compute_pref_e(states, actions, i, j, prefs, len_trajs, K, W_t, rho_s):
         for m in range(K):
             # compute z_{i,j}^{l,m}
             numerator = rho_s[l,m] * compute_likelihood(states, actions, i, j, l, m, prefs, len_trajs, K, W_t)
-            # ! PROBLEM: complexity
-            # zeta[i,j,l,m] = numerator / denominator
             zeta[l,m] = numerator / denominator
-    # print(f"finished pref {i},{j}")
     return zeta
 
 def e_step(states, actions, prefs, len_trajs, W_t, rho_s):
-    ## states = (40, 40, 3), rho_s = (K=4,)
+    ## states = (40, 40, 5), rho_s = (K=4,)
     N = states.shape[0]
     K = rho_s.shape[0]
 
@@ -250,7 +230,7 @@ def e_step(states, actions, prefs, len_trajs, W_t, rho_s):
     # Here we just compose them all back into zeta at the end
     with tqdm_joblib(tqdm(desc="Running E-step.", total=len(states)**2)) as progress_bar:
         # Can change the second number depending on how many cpu cores you have access to.
-        n_procs = max(1, os.cpu_count()-2)
+        n_procs = max(1, os.cpu_count()-16)
         r = Parallel(n_jobs=n_procs)(
             delayed(compute_pref_e)(s,a,i,j,p,lt,k,wt,rs) for s,a,i,j,p,lt,k,wt,rs in inputs
         )
@@ -264,16 +244,6 @@ def e_step(states, actions, prefs, len_trajs, W_t, rho_s):
             # https://joblib.readthedocs.io/en/latest/generated/joblib.Parallel.html
             zeta[i,j,:,:] = r[count]
             count += 1
-
-            # denominator = sum(compute_likelihood(states, actions, i, j, k, h, prefs, len_trajs, K, W_t) \
-            #                     * rho_s[k,h] for k in range(K) for h in range(K))
-            # for l in range(K):
-            #     for m in range(K):
-            #         # compute z_{i,j}^{l,m}
-            #         numerator = rho_s[l,m] * compute_likelihood(states, actions, i, j, l, m, prefs, len_trajs, K, W_t)
-            #         # ! PROBLEM: complexity
-            #         zeta[i,j,l,m] = numerator / denominator
-            # print("finished pref")
 
     # ! some ones on first iter ??
     return zeta
