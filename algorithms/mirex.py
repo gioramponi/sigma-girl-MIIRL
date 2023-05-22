@@ -250,7 +250,7 @@ def e_step(states, actions, prefs, len_trajs, W_t, rho_s):
     # Here we just compose them all back into zeta at the end
     with tqdm_joblib(tqdm(desc="Running E-step.", total=len(states)**2)) as progress_bar:
         # Can change the second number depending on how many cpu cores you have access to.
-        n_procs = max(1, os.cpu_count()-16)
+        n_procs = max(1, os.cpu_count()-2)
         r = Parallel(n_jobs=n_procs)(
             delayed(compute_pref_e)(s,a,i,j,p,lt,k,wt,rs) for s,a,i,j,p,lt,k,wt,rs in inputs
         )

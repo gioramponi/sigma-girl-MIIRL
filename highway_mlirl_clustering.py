@@ -130,8 +130,10 @@ def run(id, seed, args):
                                len_trajs, states_idx_dict, state_space, action_space, beta,
                                 gamma=gamma,
                                 n_iterations=n_iterations)
-    t_s[n_i] = (datetime.datetime.now() - d_start).total_seconds()
-    res[n_i] = r
+    # t_s[n_i] = (datetime.datetime.now() - d_start).total_seconds()
+    # res[n_i] = r
+    t_s = (datetime.datetime.now() - d_start).total_seconds()
+    res = z
     return res, t_s
 
 
@@ -144,7 +146,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_features', type=int, default=5)
     parser.add_argument('--beta', type=str, default='.5', help='comma separated valued of beta parmaeter to consider')
     parser.add_argument('--gamma', type=int, default=0.99, help='discount_factor')
-    parser.add_argument('--load_path', type=str, default='sigma-girl-MIIRL/data/car_highway/sample_dataset/')
+    parser.add_argument('--load_path', type=str, default='data/car_highway/sample_dataset/')
     parser.add_argument('--trajs_file', type=str, default='condensed_binary_highway_data.csv')
     parser.add_argument('--n_jobs', type=int, default=1, help='number of parallel jobs')
     parser.add_argument('--n_iterations', type=int, default=20, help='number of iterations of ml-irl')

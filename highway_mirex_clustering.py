@@ -167,5 +167,5 @@ if __name__ == '__main__':
     seeds = [np.random.randint(1000000) for _ in range(args.n_experiments)]
     results = Parallel(n_jobs=args.n_jobs, backend='loky')(
         delayed(run)(id, seed, args) for id, seed in zip(range(args.n_experiments), seeds))
-    np.save(args.load_path + '/res_mlirl_final13.npy', results)
+    np.save(args.load_path + '/res_mmirex_final13.npy', results)
 

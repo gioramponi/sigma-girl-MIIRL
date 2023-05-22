@@ -111,8 +111,10 @@ def maximum_likelihood_irl(states, actions, features, probs, init_param, len_tra
         L, gradients, q = evaluate_gradients(states, actions, param, len_trajs, states_idx_dict, state_space, action_space, gamma, features,
                                           probs, beta, weights,
                                           n_iterations=gradient_iterations)
+        gradients = np.clip(gradients, -1, 1)
+        # print(gradients)
         param += .1 * gradients
-    print(L)
+    
     return param, q, grad
 
 
@@ -148,12 +150,12 @@ def multiple_intention_irl(states, actions, features, K, gt_intents, len_trajs, 
     prev_assignment = np.ones(z.shape)
     it = 0
 
-    max_iteration = 20
+    max_iteration = 40
     while it < max_iteration and np.max(np.abs(z - prev_assignment)) > tolerance:
         print('Iteration {0}, convergence {1}'.format(it, np.max(np.abs(z - prev_assignment))))
         prev_assignment = z
         z = e_step(states, actions, len_trajs, states_idx_dict, theta, rho_s, action_space, q, beta).T  # K, N
-        if it % 5 == 0:
+        if it % 1 == 0:
             print_accuracy(z.T, gt_intents, rho_s, theta)
         it += 1
         for i in range(z.shape[0]):
